@@ -115,10 +115,38 @@ curl http://localhost:8081/datos/presion
 
 ## Requisitos completados
 
-- [ ] TODO 1-11: Store local, mensajes RPC, ServicioQuorum con RPC y coordinadores (`pkg/replicacion/quorum.go`)
-- [ ] TODO 12-15: Nodo HTTP + RPC + anti-entropia (`cmd/nodo/main.go`)
-- [ ] Docker Compose con 3 nodos
+- [x] TODO 1-11: Store local, mensajes RPC, ServicioQuorum con RPC y coordinadores (`pkg/replicacion/quorum.go`)
+- [x] TODO 12-15: Nodo HTTP + RPC + anti-entropia (`cmd/nodo/main.go`)
+- [x] Docker Compose con 3 nodos
 
-## Captura de ejecución
+## Capturas de ejecución
+Para visualizar las capturas a mayor detalle, revise la carpeta "capturas" en la raíz del repositorio.
 
-_(Adjuntar log mostrando escritura y lectura con quorum, tolerancia a fallos y read-repair)_
+![Primer arranque](capturas/1-primer_arranque(no_se_conocen).png)
+
+---
+
+![Primer arranque (los nodos se conocen)](capturas/2-primer_arranque(se_conocen).png)
+
+---
+
+![Prueba de escritura](capturas/3-escritura.png)
+
+---
+
+![Prueba de lectura](capturas/4-lectura.png)
+
+---
+
+![Prueba de escritura después de simular caída de un nodo](capturas/5-escritura_despues_caida_nodo3.png)
+
+---
+
+![Prueba de Read-Repair](capturas/6-read-repair-escribir-valor.png)
+
+---
+
+
+![Prueba después de caída del nodo](capturas/7-despues-caida-nodo2.png)
+
+---

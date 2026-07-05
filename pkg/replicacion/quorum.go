@@ -181,7 +181,8 @@ func CoordinarEscritura(clave, valor string, timestamp int64, pares []string, w 
 	}
 
 	// Contador de votos positivos recibidos
-	votosPositivos := 0
+	votosPositivos := 1
+	// Contamos el voto positivo del nodo local (asumimos que la escritura local siempre es exitosa)
 	// Procesamos el canal
 	for i := 0; i < len(pares); i++ {
 		if <-canalConfirmaciones {
