@@ -226,6 +226,9 @@ func manejadorDatos(w http.ResponseWriter, r *http.Request) {
 		// Timestampt único basado en Unix Nano (Garantiza orden temporal estricto)
 		timestampActual := time.Now().UnixNano()
 
+		// Escribir localmente antes de coordinar (garantiza voto local)
+		_ = servicioQ.Store.Escribir(clave, body.Valor, timestampActual)
+
 		// Coordina la escritura distribuida exigiendo la cuota W
 		exitoQuorum := replicacion.CoordinarEscritura(clave, body.Valor, timestampActual, pares, configQ.W)
 
@@ -239,7 +242,7 @@ func manejadorDatos(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodGet:
 		// Coordina la lectura distribuida exigiendo la cuota R (Trae el dato más nuevo)
-		valor, ts, encontrado := replicacion.CoordinarLectura(clave, pares, configQ.R)
+		valor, ts, encontrado := replicacion.CoordinarLectura(clave, pares, configQ.R, servicioQ.Store)
 
 		if !encontrado {
 			http.Error(w, "Clave no encontrada en el sistema por Quorum", http.StatusNotFound)

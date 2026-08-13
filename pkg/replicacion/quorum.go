@@ -28,6 +28,7 @@ type RespLectura struct {
 	Valor      string
 	Timestamp  int64
 	NodoID     string
+	NodoAddr   string
 	Encontrado bool
 }
 
@@ -201,31 +202,9 @@ func CoordinarEscritura(clave, valor string, timestamp int64, pares []string, w 
 // Conecta RPC a cada par, invoca Leer, y retorna el valor con el timestamp mas grande.
 // Retorna true si obtuvo al menos R respuestas.
 // TODO 11: Implementar CoordinarLectura.
-func CoordinarLectura(clave string, pares []string, r int) (string, int64, bool) {
+func CoordinarLectura(clave string, pares []string, r int, local *Store) (string, int64, bool) {
 	canalLecturas := make(chan RespLectura, len(pares))
 	args := ArgsLectura{Clave: clave}
-
-	// Lanzar llamadas RPC concurrentes
-	// Similar a las llamadas RPC de la función anterior
-	for _, par := range pares {
-		go func(direccion string) {
-			cliente, err := rpc.Dial("tcp", direccion)
-			if err != nil {
-				canalLecturas <- RespLectura{Encontrado: false}
-				return
-			}
-			defer cliente.Close()
-
-			// Llamada RPC a Leer en el par
-			var resp RespLectura
-			err = cliente.Call("ServicioQuorum.Leer", args, &resp)
-			if err != nil {
-				canalLecturas <- RespLectura{Encontrado: false}
-			} else {
-				canalLecturas <- resp
-			}
-		}(par)
-	}
 
 	// Variables para recolectar respuestas y determinar el mejor valor
 	var respuestasRecibidas []RespLectura
@@ -235,16 +214,47 @@ func CoordinarLectura(clave string, pares []string, r int) (string, int64, bool)
 	var maxTimestamp int64
 	encontradoGlobal := false
 
+	// Si tenemos una copia local, consultarla primero y agregarla a las respuestas
+	if local != nil {
+		if v, ts, ok := local.Leer(clave); ok {
+			respuestasRecibidas = append(respuestasRecibidas, RespLectura{Valor: v, Timestamp: ts, NodoAddr: "local", Encontrado: true})
+			respuestasValidas++
+			encontradoGlobal = true
+			maxTimestamp = ts
+			mejorValor = v
+		}
+	}
+
+	// Lanzar llamadas RPC concurrentes a pares remotos
+	for _, par := range pares {
+		go func(direccion string) {
+			cliente, err := rpc.Dial("tcp", direccion)
+			if err != nil {
+				canalLecturas <- RespLectura{Encontrado: false, NodoAddr: direccion}
+				return
+			}
+			defer cliente.Close()
+
+			var resp RespLectura
+			err = cliente.Call("ServicioQuorum.Leer", args, &resp)
+			if err != nil {
+				canalLecturas <- RespLectura{Encontrado: false, NodoAddr: direccion}
+			} else {
+				// Guardamos la dirección remota para poder realizar read-repair más tarde
+				resp.NodoAddr = direccion
+				canalLecturas <- resp
+			}
+		}(par)
+	}
+
 	// Recolectar resultados de la red
 	for i := 0; i < len(pares); i++ {
 		resp := <-canalLecturas
 		respuestasRecibidas = append(respuestasRecibidas, resp)
 
-		// Contar respuestas válidas y determinar el mejor valor según el timestamp
 		if resp.Encontrado {
 			respuestasValidas++
 			encontradoGlobal = true
-			// Regla Last-Write-Wins: nos quedamos con el valor más nuevo
 			if resp.Timestamp > maxTimestamp {
 				maxTimestamp = resp.Timestamp
 				mejorValor = resp.Valor
@@ -258,22 +268,21 @@ func CoordinarLectura(clave string, pares []string, r int) (string, int64, bool)
 	}
 
 	// Read-Repair (sincronizar desactualizados)
-	// Recorremos los nodos que respondieron y, si tienen un timestamp menor, les enviamos el valor nuevo
 	for _, resp := range respuestasRecibidas {
 		if resp.Encontrado && resp.Timestamp < maxTimestamp {
-			// Lanzamos en segundo plano para no demorar la respuesta al cliente humano
-			go func(nodoID string) {
-				// Buscamos la dirección de red correspondiente a ese nodoID
-				cliente, err := rpc.Dial("tcp", nodoID)
+			if resp.NodoAddr == "local" {
+				continue
+			}
+			go func(nodoAddr string) {
+				cliente, err := rpc.Dial("tcp", nodoAddr)
 				if err != nil {
 					return
 				}
 				defer cliente.Close()
-				// Enviamos la sincronización con el mejor valor y timestamp
 				argsSinc := ArgsEscritura{Clave: clave, Valor: mejorValor, Timestamp: maxTimestamp}
 				var respSinc RespEscritura
 				_ = cliente.Call("ServicioQuorum.Sincronizar", argsSinc, &respSinc)
-			}(resp.NodoID)
+			}(resp.NodoAddr)
 		}
 	}
 
